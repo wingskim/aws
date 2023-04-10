@@ -1,0 +1,129 @@
+# AWSTemplateFormatVersion: 2010-09-09
+# Description: |
+  
+Parameters:
+  author:
+    Description: Enter your name.
+    Type: String
+    Default: kim2023
+#   Envtype:
+#     Description: Select the envtype.
+#     Type: String
+#     AllowedValues:
+#       - test
+#       - dev
+#       - prod
+#     Default: test
+  
+# Metadata:
+  
+Mappings:
+  EnvtypeMap:
+    Account:
+      '556597556918': test
+      '111111111111': dev
+      '222222222222': prod
+
+  CidrMap:
+    test:
+      vpc: 10.0.0.0/16
+      subnetpub1a: 10.0.0.0/24
+      subnetpub2c: 10.0.1.0/24
+      subnetpri1a: 10.0.2.0/24
+      subnetpri2c: 10.0.3.0/24
+      subnetnat1a: 10.0.4.0/24
+      subnetnat2c: 10.0.5.0/24
+    dev:
+      vpc: 10.1.0.0/16
+      subnetpub1a: 10.1.0.0/24
+      subnetpub2c: 10.1.1.0/24
+      subnetpri1a: 10.1.2.0/24
+      subnetpri2c: 10.1.3.0/24
+      subnetnat1a: 10.1.4.0/24
+      subnetnat2c: 10.1.5.0/24    
+    prod:
+      vpc: 10.100.0.0/16
+      subnetpub1a: 10.100.0.0/24
+      subnetpub2c: 10.100.1.0/24
+      subnetpri1a: 10.100.2.0/24
+      subnetpri2c: 10.100.3.0/24
+      subnetnat1a: 10.100.4.0/24
+      subnetnat2c: 10.100.5.0/24     
+  
+Conditions:
+  createNGW:
+    !Equals [prod, !FindInMap [ EnvtypeMap, Account, !Ref "AWS::AccountId" ]]
+  
+Resources:
+  kimvpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [ CidrMap, !FindInMap [ EnvtypeMap, Account, !Ref "AWS::AccountId" ], vpc ]
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Name
+          Value: !Sub QLite-dev-${author}-vpc
+
+  kimigw:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub QLite-dev-${author}-igw
+  
+  kimigwattach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref kimigw
+      VpcId: !Ref kimvpc # Required
+      # VpnGatewayId: "String"
+
+  kimSubnetpub1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref kimvpc
+      CidrBlock: !FindInMap [ CidrMap, !FindInMap [ EnvtypeMap, Account, !Ref "AWS::AccountId" ], subnetpub1a ]
+      AvailabilityZone: "ap-northeast-1a"
+      Tags:
+      - Key: Name
+        Value: !Sub QLite-dev-${author}-subnet-pub1a
+   
+  kimrtbpub:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: QLite-dev-kim100-rtb-pub
+      VpcId: !Ref kimvpc # Required
+
+  kimngw1a:
+    Condition: createNGW
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIP.AllocationId
+      SubnetId: !Ref kimSubnetpub1a # Required
+      Tags:
+        - Key: Name
+          Value: !Sub QLite-dev-${author}-ngw1a2 
+
+  EIP:
+    Condition: createNGW
+    DependsOn: kimigwattach
+    Type: AWS::EC2::EIP
+
+  routengw1a:
+    Condition: createNGW
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref kimngw1a
+      RouteTableId: !Ref kimrtbpub # Required
+# Transform:
+  
+Outputs:
+  OutmyVPC:
+    Value: !Ref kimvpc
+    Export: 
+      Name: myVPC1
+   
